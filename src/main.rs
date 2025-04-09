@@ -4,20 +4,16 @@ use sdl3::pixels::Color;
 use sdl3::render::{FPoint, WindowCanvas};
 use std::f32::consts::PI;
 use std::ops;
-use std::time::Duration;
+use std::time::Instant;
 
 const SIZE: u32 = 400;
 pub fn main() {
     let mut point = Point2D::new(0.0, 0.0);
 
+    let mut cycle = 0_f32;
+    let radius = 100_f32;
     let mut pasted_points: Vec<FPoint> = vec![point.to_cartesian().to_sdl()];
-    // let cartestian = point.to_cartesian();
-    // let re_polar = Point2D::to_polar(cartestian);
-    // let plane = point.to_cartesian();
-    //
-    // let mut test_point = Point2D::new(700.0, 100.0);
-    // test_point.optimize();
-    // println!("{:?}", test_point);
+
 
     let sdl_context = sdl3::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -36,6 +32,7 @@ pub fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0;
     'running: loop {
+        let time = Instant::now();
         i = (i + 1) % 255;
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
@@ -51,15 +48,21 @@ pub fn main() {
         }
         // The rest of the game loop goes here...
 
-        point += (0.0, 1.0);
-
-        point.optimize();
-        pasted_points.push(point.to_cartesian().to_sdl());
+        let cos = cycle.cos() * radius;
+        let sin = cycle.sin() * radius;
+        let mut next = Point2D::new(cos + cycle * 2.0 * PI, sin);
+        next.optimize();
+        pasted_points.push(next.to_cartesian().to_sdl());
         canvas.set_draw_color(Color::RGB(255, 255, 255));
+
         Point2D::draw_point(&mut canvas, &pasted_points);
 
         canvas.present();
-        std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 100));
+        println!("Frame time: {}", time.elapsed().as_millis());
+
+        cycle += 0.01;
+
+        // std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 200));
     }
 }
 
@@ -110,9 +113,7 @@ impl Point2D {
     }
 
     fn lapped(l: f32) -> f32 {
-        let lep = ((SIZE as f32) - (l.abs() - SIZE as f32).abs()) * -l.signum();
-        println!("Lap {} to {}", l, lep);
-        lep
+        ((SIZE as f32) - (l.abs() - SIZE as f32).abs()) * -l.signum()
     }
 
     pub fn optimize(&mut self) {
