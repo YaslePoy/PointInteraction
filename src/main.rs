@@ -4,7 +4,6 @@ use sdl3::pixels::Color;
 use sdl3::render::{FPoint, WindowCanvas};
 use std::f32::consts::PI;
 use std::ops;
-use std::ops::Add;
 use std::time::Duration;
 
 const SIZE: u32 = 400;
@@ -96,19 +95,6 @@ impl Point2D {
         Point2D::new(cos * scale, sin * scale)
     }
 
-    pub fn to_polar(p: Point2D) -> Point2D {
-        let len = p.y.hypot(p.x);
-        let cos = p.x / len;
-        let sin = p.y / len;
-        let x = cos.acos();
-        let mut y = sin.asin();
-        let mb_sin = x.sin();
-        if y.signum() != mb_sin.signum() {
-            y = -y;
-        }
-        Point2D::new(x, y)
-    }
-
     pub fn to_sdl(&self) -> FPoint {
         FPoint::new(self.x + SIZE as f32, self.y + SIZE as f32)
     }
@@ -145,9 +131,6 @@ impl Point2D {
     pub fn draw_point(canvas: &mut WindowCanvas, points: &Vec<FPoint>) {
         // canvas.draw_points(&points).unwrap()
         canvas.draw_points(&points[..]).unwrap();
-    }
-    fn requires_slice<'a, T: Into<&'a [FPoint]>>(arg: T) {
-        let slice: &[FPoint] = arg.into();
     }
 }
 
