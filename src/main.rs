@@ -3,13 +3,15 @@ use sdl3::keyboard::Keycode;
 use sdl3::pixels::Color;
 use sdl3::render::{FPoint, WindowCanvas};
 use std::f32::consts::PI;
+use std::ops;
+use std::ops::Add;
 use std::time::Duration;
 
 const SIZE: u32 = 400;
 pub fn main() {
+    let mut point = Point2D::new(0.0, 0.0);
 
-    let mut point = Point2D::new(100.0, 100.0);
-
+    let mut pasted_points: Vec<FPoint> = vec![point.to_cartesian().to_sdl()];
     // let cartestian = point.to_cartesian();
     // let re_polar = Point2D::to_polar(cartestian);
     // let plane = point.to_cartesian();
@@ -36,8 +38,8 @@ pub fn main() {
     let mut i = 0;
     'running: loop {
         i = (i + 1) % 255;
-        // canvas.set_draw_color(Color::RGB(0, 0, 0));
-        // canvas.clear();
+        canvas.set_draw_color(Color::RGB(0, 0, 0));
+        canvas.clear();
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -49,11 +51,13 @@ pub fn main() {
             }
         }
         // The rest of the game loop goes here...
-        point.x += 1.0/7.0;
-        point.y += 1.0;
+
+        point += (0.0, 1.0);
+
         point.optimize();
+        pasted_points.push(point.to_cartesian().to_sdl());
         canvas.set_draw_color(Color::RGB(255, 255, 255));
-        point.draw(&mut canvas);
+        Point2D::draw_point(&mut canvas, &pasted_points);
 
         canvas.present();
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 100));
@@ -64,11 +68,12 @@ pub fn main() {
 struct Point2D {
     x: f32,
     y: f32,
+    spin: bool,
 }
 
 impl Point2D {
     pub fn new(x: f32, y: f32) -> Point2D {
-        Point2D { x, y }
+        Point2D { x, y, spin: false }
     }
 
     pub fn distance(&self, point: &Point2D) -> f32 {
@@ -87,7 +92,7 @@ impl Point2D {
         let angle = (self.x / SIZE as f32) * PI;
         let cos = angle.cos();
         let sin = angle.sin();
-        let scale = self.y;
+        let scale = (SIZE as f32 + self.y) / 2.0;
         Point2D::new(cos * scale, sin * scale)
     }
 
@@ -119,7 +124,9 @@ impl Point2D {
     }
 
     fn lapped(l: f32) -> f32 {
-        ((SIZE as f32) - (l.abs() - SIZE as f32).abs()) * -l.signum()
+        let lep = ((SIZE as f32) - (l.abs() - SIZE as f32).abs()) * -l.signum();
+        println!("Lap {} to {}", l, lep);
+        lep
     }
 
     pub fn optimize(&mut self) {
@@ -128,7 +135,35 @@ impl Point2D {
         }
 
         if self.y.abs() > SIZE as f32 {
-            self.y = Self::lapped(self.y);
+            let side = self.y.signum();
+            self.y += -side * 2.0 * (self.y.abs() - SIZE as f32);
+            self.x = self.x + SIZE as f32;
+            self.spin = !self.spin;
         }
     }
+
+    pub fn draw_point(canvas: &mut WindowCanvas, points: &Vec<FPoint>) {
+        // canvas.draw_points(&points).unwrap()
+        canvas.draw_points(&points[..]).unwrap();
+    }
+    fn requires_slice<'a, T: Into<&'a [FPoint]>>(arg: T) {
+        let slice: &[FPoint] = arg.into();
+    }
+}
+
+impl ops::AddAssign for Point2D {
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x * bool_to_int(self.spin) as f32;
+        self.y += rhs.y * bool_to_int(self.spin) as f32;
+    }
+}
+
+impl ops::AddAssign<(f32, f32)> for Point2D {
+    fn add_assign(&mut self, rhs: (f32, f32)) {
+        self.x += rhs.0 * bool_to_int(self.spin) as f32;
+        self.y += rhs.1 * bool_to_int(self.spin) as f32;
+    }
+}
+fn bool_to_int(flag: bool) -> i32 {
+    if !flag { 1 } else { -1 }
 }
