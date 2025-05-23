@@ -1,167 +1,150 @@
-use sdl3::event::Event;
-use sdl3::keyboard::Keycode;
-use sdl3::pixels::Color;
-use sdl3::render::{FPoint, WindowCanvas};
+use ggez::conf::WindowMode;
+use ggez::event::{self, EventHandler};
+use ggez::graphics::{self, Color, DrawParam, Image, ImageFormat};
+use ggez::input::keyboard::KeyCode::X;
+use ggez::{Context, ContextBuilder, GameResult};
 use std::f32::consts::PI;
 use std::ops::{Mul, Neg, Rem, Sub};
-use std::sync::mpsc;
-use std::thread;
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
-use sdl3::libc::printf;
+use std::time::Instant;
 
 const SIZE: u32 = 500;
 const SIZE_F: f32 = 500.0;
 const ARC: f32 = SIZE_F * 2.0 * PI;
-pub fn main() {
-    let mut point_a = Vector2::new(0.0, 0.0);
-    let mut point_b = Vector2::new(SIZE_F, 0.0);
 
-    
-    let mut selection = 1;
-
-    let sdl_context = sdl3::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-
-    let window = video_subsystem
-        .window("Point interaction", SIZE * 2, SIZE * 2)
-        .position_centered()
+fn main() {
+    // Make a Context.
+    let (mut ctx, event_loop) = ContextBuilder::new("Point interaction", "YaslePoy")
+        .window_mode(
+            WindowMode::default()
+                .resizable(false)
+                .dimensions(SIZE_F * 2.0, SIZE_F * 2.0),
+        )
         .build()
-        .unwrap();
+        .expect("aieee, could not create ggez context!");
 
-    let mut canvas = window.clone().into_canvas();
+    // Create an instance of your event handler.
+    // Usually, you should provide it with the Context object to
+    // use when setting your game up.
+    let my_game = MyGame::new(&mut ctx);
 
-    sdl_context.mouse().show_cursor(false);
-    sdl_context.mouse().capture(true);
-    sdl_context
-        .mouse()
-        .warp_mouse_in_window(&window, SIZE_F, SIZE_F);
+    // Run!
+    event::run(ctx, event_loop, my_game);
+}
 
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    canvas.clear();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    let time = Instant::now();
-    let mut count = 0;
+struct MyGame {
+    display: Image,
+    raw_view: Vec<u8>,
+    point_a: Vector2,
+    point_b: Vector2,
+    require_draw: bool,
+}
 
-    let mut ready_points: Vec<(FPoint, u8)> = vec![];
+impl MyGame {
+    pub fn new(_ctx: &mut Context) -> MyGame {
+        // Load/create resources such as images here.
+        let mut raw = vec![0; (SIZE * SIZE * 16) as usize];
+        let mut point_a = Vector2::new(0.0, 0.0);
+        let mut point_b = Vector2::new(200.0, 200.0);
 
-    'running: loop {
-        canvas.set_draw_color(Color::RGB(0, 0, 0));
-        canvas.clear();
+        let a = point_a.to_cartesian().to_sdl();
+        let b = point_b.to_cartesian().to_sdl();
 
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                Event::KeyDown {
-                    keycode: Some(Keycode::_1),
-                    ..
-                } => {
-                    selection = 1;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::_2),
-                    ..
-                } => {
-                    selection = 2;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::X),
-                    ..
-                } => {
-                    let a_clone = point_a.clone();
-                    let b_clone = point_b.clone();
-                    let timer = Instant::now();
-                    ready_points.clear();
-                    for x in (-(SIZE as i32))..(SIZE as i32) {
-                        for y in (-(SIZE as i32))..(SIZE as i32) {
-                            let pt = Vector2::new(x as f32, y as f32);
-                            
-                            if x == 0 && y == 0 { 
-                                println!("0-0");
-                            }
-                            
-                            if pt.eq(&a_clone) || pt.eq(&b_clone) {
-                                continue;
-                            }
-                            let dist_a = pt.distance(&(a_clone));
+        draw_to_raw(a.0 as u32, a.1 as u32, Color::WHITE, &mut raw);
+        draw_to_raw(b.0 as u32, b.1 as u32, Color::WHITE, &mut raw);
 
+        MyGame {
+            display: Image::from_pixels(
+                _ctx,
+                &raw,
+                ImageFormat::Rgba8UnormSrgb,
+                SIZE * 2,
+                SIZE * 2,
+            ),
+            raw_view: raw,
+            point_a,
+            point_b,
+            require_draw: false
+        }
+    }
+}
 
-                            // if dist_a > 100.0 { 
-                            //     continue;
-                            // }
-                            let ratio =  (256.0 - (dist_a / (SIZE_F * PI)).powf(0.3) * 256.0) as u8;
-                            
-                            ready_points.push((pt.to_cartesian().to_sdl(), ratio));
-                        }
+pub fn draw_to_raw(x: u32, y: u32, color: Color, field: &mut Vec<u8>) {
+    let (r, g, b, a) = color.to_rgba();
+    let offset = (SIZE * 8 * y + x * 4) as usize;
+    field[offset] = r;
+    field[offset + 1] = g;
+    field[offset + 2] = b;
+    field[offset + 3] = a;
+}
+
+impl EventHandler for MyGame {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult {
+        // Update code here...
+        if _ctx.keyboard.is_key_just_pressed(X) {
+
+            let mut ready_points: Vec<((u32, u32), u8)> = vec![];
+
+            let a_clone = self.point_a.clone();
+            let b_clone = self.point_b.clone();
+            let timer = Instant::now();
+            ready_points.clear();
+
+            for x in (-(SIZE as i32))..(SIZE as i32) {
+                for y in (-(SIZE as i32))..(SIZE as i32) {
+                    let pt = Vector2::new(x as f32, y as f32);
+
+                    if x == 0 && y == 0 {
+                        println!("0-0");
                     }
-                    println!("end");
-                    println!("{}", timer.elapsed().as_millis());
+
+                    if pt.eq(&a_clone) || pt.eq(&b_clone) {
+                        continue;
+                    }
+                    let dist_a = pt.distance(&(a_clone));
+                    let dist_b = pt.distance(&(b_clone));
+                    let delta = (dist_a - dist_b).abs();
+
+                    if delta > 300.0 {
+                        continue;
+                    }
+
+                    let ratio = (256.0 - (delta / 100.0).powf(0.3) * 256.0) as u8;
+
+                    ready_points.push((pt.to_cartesian().to_sdl(), ratio));
                 }
-                Event::KeyDown {
-                    keycode: Some(Keycode::D),
-                    ..
-                } => {
-                    println!("Debug")
-                }
-                // Event::MouseMotion { .. } => {
-                //     if let Event::MouseMotion {
-                //         timestamp: _,
-                //         window_id: _,
-                //         which: _,
-                //         mousestate: _,
-                //         x,
-                //         y,
-                //         xrel,
-                //         yrel,
-                //     } = event
-                //     {
-                //         let mut cursor: &mut Point2D;
-                //         if selection == 1 {
-                //             cursor = line.a;
-                //         } else {
-                //             cursor = line.b;
-                //         }
-                //
-                //         cursor += (xrel, yrel);
-                //         cursor.optimize();
-                //         cursor = &mut cursor.abs();
-                //     }
-                // }
-                _ => {}
+            }
+            println!("end");
+            println!("{}", timer.elapsed().as_millis());
+
+            for ready_point in ready_points {
+                draw_to_raw(
+                    ready_point.0.0,
+                    ready_point.0.1,
+                    Color::from_rgba(u8::MAX, u8::MAX, u8::MAX, ready_point.1),
+                    &mut self.raw_view,
+                );
+                self.require_draw = true
             }
         }
+        Ok(())
+    }
 
-        sdl_context
-            .mouse()
-            .warp_mouse_in_window(&window, SIZE_F, SIZE_F);
-        // The rest of the game loop goes here...
-
-        count += 1;
-
-        canvas.set_draw_color(Color::WHITE);
-        point_a.draw(&mut canvas);
-        point_b.draw(&mut canvas);
-
-        for ready_point in &ready_points {
-            canvas.set_draw_color(Color::from((
-                ready_point.1,
-                ready_point.1,
-                ready_point.1,
-            )));
-            canvas.draw_point(ready_point.0).unwrap()
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        let mut canvas = graphics::Canvas::from_frame(ctx, Color::BLACK);
+        // Draw code here...
+        if self.require_draw { 
+            self.display = Image::from_pixels(
+                ctx,
+                &*self.raw_view,
+                ImageFormat::Rgba8UnormSrgb,
+                SIZE * 2,
+                SIZE * 2,
+            );
+            self.require_draw = false;
         }
-        canvas.present();
-
-        if count == 10000 {
-            println!("Time for 10000 is {} ms", time.elapsed().as_millis());
-        }
-
-        thread::sleep(Duration::new(0, 1_000_000_000u32 / 600));
+        
+        canvas.draw(&self.display, DrawParam::default());
+        canvas.finish(ctx)
     }
 }
 
@@ -259,18 +242,17 @@ impl Vector2 {
         Vector2::new(x, y)
     }
 
-    pub fn to_sdl(&self) -> FPoint {
-        FPoint::new(self.x + SIZE_F, self.y + SIZE_F)
+    pub fn to_sdl(&self) -> (u32, u32) {
+        ((self.x + SIZE_F) as u32, (self.y + SIZE_F) as u32)
     }
 
     pub fn from_sdl(x: f32, y: f32) -> Vector2 {
         Vector2::new(x - SIZE_F, y - SIZE_F)
     }
 
-    pub fn draw(&self, canvas: &mut WindowCanvas) {
+    pub fn draw(&self, canvas: &mut Vec<u8>) {
         let polar = self.to_cartesian();
         let sdl_point = polar.to_sdl();
-        canvas.draw_point(sdl_point).unwrap();
     }
 
     fn lapped(l: f32) -> f32 {
@@ -316,11 +298,6 @@ impl Vector2 {
         }
 
         Vector2::new_with_spin(x, y, self.orientation.clone())
-    }
-
-    pub fn draw_point(canvas: &mut WindowCanvas, points: &Vec<FPoint>) {
-        // canvas.draw_points(&points).unwrap()
-        canvas.draw_points(&points[..]).unwrap();
     }
 
     pub fn eq(&self, point: &Vector2) -> bool {
@@ -474,14 +451,6 @@ impl Clone for Vector2 {
     }
 }
 
-struct Line2D<'a> {
-    a: &'a mut Vector2,
-    b: &'a mut Vector2,
-    ending: Color,
-    fill: Color,
-    segments: u32,
-}
-
 impl Sub for Vector2 {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
@@ -494,45 +463,5 @@ impl Mul<f32> for Vector2 {
 
     fn mul(self, rhs: f32) -> Self::Output {
         Vector2::new_with_spin(self.x * rhs, self.y * rhs, self.orientation)
-    }
-}
-
-impl<'a> Line2D<'a> {
-    pub fn new(a: &'a mut Vector2, b: &'a mut Vector2) -> Self {
-        Self {
-            a,
-            b,
-            ending: Color::WHITE,
-            fill: Color::YELLOW,
-            segments: 13,
-        }
-    }
-
-    pub fn draw_two_side<'b>(&'a self, canvas: &mut WindowCanvas) {
-        let distance: f32;
-        distance = self.b.distance(self.a);
-        let alt_distance = distance;
-        println!("distance: {}", distance);
-        let a_abs = self.a.optimized();
-        let b_abs = self.b.optimized();
-        let main_vector = (b_abs - a_abs).normalized();
-        let vec_positive = main_vector.clone() * (distance / self.segments as f32);
-        let vec_negative = main_vector * (-alt_distance / self.segments as f32);
-
-        let mut cursor = self.a.clone();
-        let mut cursor_negative = cursor.clone();
-        canvas.set_draw_color(self.fill);
-
-        for _i in 1..self.segments {
-            cursor.add(vec_positive.x, vec_positive.y);
-            cursor.optimize();
-            cursor.draw(canvas);
-            cursor_negative.add(vec_negative.x, -vec_negative.y);
-            cursor_negative.optimize();
-            cursor_negative.draw(canvas);
-        }
-        canvas.set_draw_color(self.ending);
-        self.a.draw(canvas);
-        self.b.draw(canvas);
     }
 }
