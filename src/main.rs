@@ -8,6 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use sdl3::libc::printf;
 
 const SIZE: u32 = 500;
 const SIZE_F: f32 = 500.0;
@@ -16,7 +17,6 @@ pub fn main() {
     let mut point_a = Vector2::new(0.0, 0.0);
     let mut point_b = Vector2::new(SIZE_F, 0.0);
 
-    let line = Line2D::new(&mut point_a, &mut point_b);
     
     let mut selection = 1;
 
@@ -44,7 +44,7 @@ pub fn main() {
     let time = Instant::now();
     let mut count = 0;
 
-    let mut ready_points: Vec<(FPoint, f32)> = vec![];
+    let mut ready_points: Vec<(FPoint, u8)> = vec![];
 
     'running: loop {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -80,15 +80,22 @@ pub fn main() {
                     for x in (-(SIZE as i32))..(SIZE as i32) {
                         for y in (-(SIZE as i32))..(SIZE as i32) {
                             let pt = Vector2::new(x as f32, y as f32);
+                            
+                            if x == 0 && y == 0 { 
+                                println!("0-0");
+                            }
+                            
                             if pt.eq(&a_clone) || pt.eq(&b_clone) {
                                 continue;
                             }
                             let dist_a = pt.distance(&(a_clone));
-                            let dist_b = pt.distance(&b_clone);
-                            // let sum = (1.0 / ((dist_a) / SIZE_F).powi(2)).min(100.0_f32)
-                            //     + (1.0 / ((dist_b) / SIZE_F).powi(2)).min(100.0_f32);
-                            let ratio = if dist_a > dist_b { 0.2 } else { 0.7 };
 
+
+                            // if dist_a > 100.0 { 
+                            //     continue;
+                            // }
+                            let ratio =  (256.0 - (dist_a / (SIZE_F * PI)).powf(0.3) * 256.0) as u8;
+                            
                             ready_points.push((pt.to_cartesian().to_sdl(), ratio));
                         }
                     }
@@ -142,9 +149,9 @@ pub fn main() {
 
         for ready_point in &ready_points {
             canvas.set_draw_color(Color::from((
-                (u8::MAX as f32 * ready_point.1) as u8,
-                u8::MAX,
-                u8::MAX,
+                ready_point.1,
+                ready_point.1,
+                ready_point.1,
             )));
             canvas.draw_point(ready_point.0).unwrap()
         }
