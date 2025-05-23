@@ -43,14 +43,14 @@ impl MyGame {
     pub fn new(_ctx: &mut Context) -> MyGame {
         // Load/create resources such as images here.
         let mut raw = vec![0; (SIZE * SIZE * 16) as usize];
-        let mut point_a = Vector2::new(0.0, 0.0);
-        let mut point_b = Vector2::new(200.0, 200.0);
+        let point_a = Vector2::new(0.0, 0.0);
+        let point_b = Vector2::new(200.0, 200.0);
 
         let a = point_a.to_cartesian().to_sdl();
         let b = point_b.to_cartesian().to_sdl();
 
-        draw_to_raw(a.0 as u32, a.1 as u32, Color::WHITE, &mut raw);
-        draw_to_raw(b.0 as u32, b.1 as u32, Color::WHITE, &mut raw);
+        draw_to_raw(a.0, a.1, Color::WHITE, &mut raw);
+        draw_to_raw(b.0, b.1, Color::WHITE, &mut raw);
 
         MyGame {
             display: Image::from_pixels(
@@ -176,7 +176,7 @@ impl Vector2 {
     }
 
     pub fn to_3d_placed(&self) -> Vector3 {
-        let v_angle = ((self.y / SIZE_F) * PI / 2.0);
+        let v_angle = (self.y / SIZE_F) * PI / 2.0;
         let z = v_angle.sin() * SIZE_F;
         let xy_scale = v_angle.cos();
         let angle = (self.x / SIZE_F) * PI / 2.0;
@@ -248,11 +248,6 @@ impl Vector2 {
 
     pub fn from_sdl(x: f32, y: f32) -> Vector2 {
         Vector2::new(x - SIZE_F, y - SIZE_F)
-    }
-
-    pub fn draw(&self, canvas: &mut Vec<u8>) {
-        let polar = self.to_cartesian();
-        let sdl_point = polar.to_sdl();
     }
 
     fn lapped(l: f32) -> f32 {
