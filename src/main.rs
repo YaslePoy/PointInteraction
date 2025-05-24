@@ -1,10 +1,11 @@
-use ggez::conf::WindowMode;
+use ggez::conf::{WindowMode, WindowSetup};
 use ggez::event::{self, EventHandler};
 use ggez::graphics::{self, Color, DrawParam, Image, ImageFormat};
 use ggez::input::keyboard::KeyCode::X;
 use ggez::{Context, ContextBuilder, GameResult};
 use std::f32::consts::PI;
 use std::ops::{Mul, Neg, Rem, Sub};
+use std::sync::Arc;
 use std::time::Instant;
 
 const SIZE: u32 = 500;
@@ -14,6 +15,7 @@ const ARC: f32 = SIZE_F * 2.0 * PI;
 fn main() {
     // Make a Context.
     let (mut ctx, event_loop) = ContextBuilder::new("Point interaction", "YaslePoy")
+        .window_setup(WindowSetup::default().title("Point interaction"))
         .window_mode(
             WindowMode::default()
                 .resizable(false)
@@ -44,7 +46,7 @@ impl MyGame {
         // Load/create resources such as images here.
         let mut raw = vec![0; (SIZE * SIZE * 16) as usize];
         let point_a = Vector2::new(0.0, 0.0);
-        let point_b = Vector2::new(200.0, 200.0);
+        let point_b = Vector2::new(SIZE_F, 0.0);
 
         let a = point_a.to_cartesian().to_sdl();
         let b = point_b.to_cartesian().to_sdl();
@@ -63,7 +65,7 @@ impl MyGame {
             raw_view: raw,
             point_a,
             point_b,
-            require_draw: false
+            require_draw: false,
         }
     }
 }
@@ -76,55 +78,77 @@ pub fn draw_to_raw(x: u32, y: u32, color: Color, field: &mut Vec<u8>) {
     field[offset + 2] = b;
     field[offset + 3] = a;
 }
+impl MyGame {
+    fn draw_distances(&mut self) {
+        let mut ready_points: Vec<((u32, u32), u8)> = vec![];
 
+        let a_clone = self.point_a.clone();
+        let b_clone = self.point_b.clone();
+        let timer = Instant::now();
+        ready_points.clear();
+
+        for x in (-(SIZE as i32))..(SIZE as i32) {
+            for y in (-(SIZE as i32))..(SIZE as i32) {
+                let pt = Vector2::new(x as f32, y as f32);
+
+                if x == -100 && y == -0 {
+                    println!("0-0");
+                }
+
+                if pt.eq(&a_clone) || pt.eq(&b_clone) {
+                    continue;
+                }
+                let dist_a = pt.distance(&(a_clone));
+                let dist_b = pt.distance(&(b_clone));
+
+                let delta = (dist_a - dist_b).abs();
+                if delta > 300.0 {
+                    continue;
+                }
+
+                let ratio = (256.0 - (delta / 100.0).powf(0.3) * 256.0) as u8;
+
+                ready_points.push((pt.to_cartesian().to_sdl(), ratio));
+            }
+        }
+        println!("end");
+        println!("{}", timer.elapsed().as_millis());
+
+        for ready_point in ready_points {
+            draw_to_raw(
+                ready_point.0.0,
+                ready_point.0.1,
+                Color::from_rgba(u8::MAX, u8::MAX, u8::MAX, ready_point.1),
+                &mut self.raw_view,
+            );
+            self.require_draw = true
+        }
+    }
+}
 impl EventHandler for MyGame {
     fn update(&mut self, _ctx: &mut Context) -> GameResult {
         // Update code here...
+
+        let delta = _ctx.mouse.delta();
+        if delta.x != 0.0 || delta.y != 0.0 {
+            if delta.x.hypot(delta.y) < 10.0 {
+                _ctx.mouse.reset_delta();
+                self.raw_view = vec![0; (SIZE * SIZE * 16) as usize];
+                self.require_draw = true;
+
+                let mut new_point = self.point_b.clone();
+                new_point.x += delta.x;
+                new_point.y += delta.y;
+                println!("{}, {} {} {}", new_point.x, new_point.y, delta.x, delta.y);
+
+                self.point_b = new_point;
+                self.point_a.draw_large(Color::YELLOW, &mut self.raw_view);
+                self.point_b.draw_large(Color::YELLOW, &mut self.raw_view);
+                self.draw_distances()
+            }
+        }
         if _ctx.keyboard.is_key_just_pressed(X) {
-
-            let mut ready_points: Vec<((u32, u32), u8)> = vec![];
-
-            let a_clone = self.point_a.clone();
-            let b_clone = self.point_b.clone();
-            let timer = Instant::now();
-            ready_points.clear();
-
-            for x in (-(SIZE as i32))..(SIZE as i32) {
-                for y in (-(SIZE as i32))..(SIZE as i32) {
-                    let pt = Vector2::new(x as f32, y as f32);
-
-                    if x == 0 && y == 0 {
-                        println!("0-0");
-                    }
-
-                    if pt.eq(&a_clone) || pt.eq(&b_clone) {
-                        continue;
-                    }
-                    let dist_a = pt.distance(&(a_clone));
-                    let dist_b = pt.distance(&(b_clone));
-                    let delta = (dist_a - dist_b).abs();
-
-                    if delta > 300.0 {
-                        continue;
-                    }
-
-                    let ratio = (256.0 - (delta / 100.0).powf(0.3) * 256.0) as u8;
-
-                    ready_points.push((pt.to_cartesian().to_sdl(), ratio));
-                }
-            }
-            println!("end");
-            println!("{}", timer.elapsed().as_millis());
-
-            for ready_point in ready_points {
-                draw_to_raw(
-                    ready_point.0.0,
-                    ready_point.0.1,
-                    Color::from_rgba(u8::MAX, u8::MAX, u8::MAX, ready_point.1),
-                    &mut self.raw_view,
-                );
-                self.require_draw = true
-            }
+            self.draw_distances();
         }
         Ok(())
     }
@@ -132,7 +156,7 @@ impl EventHandler for MyGame {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let mut canvas = graphics::Canvas::from_frame(ctx, Color::BLACK);
         // Draw code here...
-        if self.require_draw { 
+        if self.require_draw {
             self.display = Image::from_pixels(
                 ctx,
                 &*self.raw_view,
@@ -142,7 +166,7 @@ impl EventHandler for MyGame {
             );
             self.require_draw = false;
         }
-        
+
         canvas.draw(&self.display, DrawParam::default());
         canvas.finish(ctx)
     }
@@ -179,7 +203,7 @@ impl Vector2 {
         let v_angle = (self.y / SIZE_F) * PI / 2.0;
         let z = v_angle.sin() * SIZE_F;
         let xy_scale = v_angle.cos();
-        let angle = (self.x / SIZE_F) * PI / 2.0;
+        let angle = (self.x / SIZE_F) * PI;
         let x = angle.cos() * SIZE_F * xy_scale;
         let y = angle.sin() * SIZE_F * xy_scale;
 
@@ -189,9 +213,11 @@ impl Vector2 {
     pub fn distance(&self, point: &Vector2) -> f32 {
         let self_3d = self.to_3d_placed();
         let other_3d = point.to_3d_placed();
-        let dot = Vector3::dot(self_3d.normalized(), other_3d.normalized());
-        let angle = dot.acos();
-        angle / PI * ARC
+        let dot = self_3d.distance(other_3d);
+        let angle_alpha = (dot / (2.0 * SIZE_F)).acos();
+        let angle = PI - 2.0 * angle_alpha;
+        let mut dist = angle * SIZE_F;
+        dist
     }
 
     pub fn alt_distance(&self, point: &Vector2) -> f32 {
@@ -215,6 +241,20 @@ impl Vector2 {
 
         self.x = projected.x;
         self.y = projected.y;
+    }
+
+    pub fn draw(&self, color: Color, data: &mut Vec<u8>) {
+        let (x, y) = self.to_cartesian().to_sdl();
+        draw_to_raw(x, y, color, data)
+    }
+
+    pub fn draw_large(&self, color: Color, data: &mut Vec<u8>) {
+        self.draw(color, data);
+        let mut a = self.clone();
+        a.x += 1.0;
+        a.draw(color, data);
+        a.y += 1.0;
+        a.draw(color, data);
     }
 
     pub fn to_cartesian(&self) -> Vector2 {
@@ -393,6 +433,12 @@ impl Vector3 {
         let y = normalized.z.sin();
         let x = normalized.y.atan2(normalized.x) / PI;
         Vector2::new(x * SIZE_F, y * SIZE_F)
+    }
+
+    pub fn distance(&self, other: Vector3) -> f32 {
+        (self.x - other.x)
+            .hypot(self.y - other.y)
+            .hypot(self.z - other.z)
     }
 }
 
